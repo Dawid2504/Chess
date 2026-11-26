@@ -72,8 +72,16 @@ BTN_SB_BOT = pygame.Rect(_SB_X, HOEHE - 58, _BTN_W, 38)
 BTN_SB_MENU = pygame.Rect(_SB_X + _BTN_W + 8, HOEHE - 58, _BTN_W, 38)
 
 # Game-Over-Buttons (über dem Brett zentriert)
-BTN_GO_NEU = pygame.Rect(BRETT_MITTE_X - 155, BRETT_MITTE_Y + 26, 145, 38)
-BTN_GO_MENU = pygame.Rect(BRETT_MITTE_X + 10, BRETT_MITTE_Y + 26, 145, 38)
+_GO_KASTEN_B = 480
+_GO_KASTEN_H = 508
+_GO_RECT_X = BRETT_MITTE_X - _GO_KASTEN_B // 2
+_GO_RECT_Y = BRETT_MITTE_Y - _GO_KASTEN_H // 2
+_GO_BTN_B = (_GO_KASTEN_B - 48 - 12) // 2
+BTN_GO_NEU = pygame.Rect(_GO_RECT_X + 24, _GO_RECT_Y + 412, _GO_BTN_B, 42)
+BTN_GO_MENU = pygame.Rect(_GO_RECT_X + 24 + _GO_BTN_B + 12, _GO_RECT_Y + 412, _GO_BTN_B, 42)
+BTN_GO_UNDO = pygame.Rect(_GO_RECT_X + 24, _GO_RECT_Y + 462, _GO_BTN_B, 30)
+BTN_GO_BOARD = pygame.Rect(_GO_RECT_X + 24 + _GO_BTN_B + 12, _GO_RECT_Y + 462, _GO_BTN_B, 30)
+BTN_GO_SHOW = pygame.Rect(BRETT_MITTE_X - 95, BRETT_RECT.bottom - 44, 190, 32)
 
 START_ANZAHL = {
     chess.PAWN: 8,
@@ -106,9 +114,11 @@ def erstelle_schriften() -> dict[str, pygame.font.Font]:
 
     return {
         "titel": pygame.font.SysFont(ui_font, 46, bold=True),
+        "go_titel": pygame.font.SysFont(ui_font, 32, bold=True),
         "untertitel": pygame.font.SysFont(ui_font, 17),
         "banner": pygame.font.SysFont(ui_font, 26, bold=True),
         "karte_titel": pygame.font.SysFont(ui_font, 21, bold=True),
+        "stat_wert": pygame.font.SysFont(ui_font, 18, bold=True),
         "info": pygame.font.SysFont(ui_font, 16, bold=True),
         "klein": pygame.font.SysFont(ui_font, 14),
         "winzig": pygame.font.SysFont(ui_font, 12, bold=True),
@@ -562,55 +572,218 @@ def zeichne_eval_bar(
         fenster.blit(tip_surf, tip_surf.get_rect(center=tip_rect.center))
 
 
-def ermittle_game_over_text(board: chess.Board) -> tuple[str, str]:
-    """Gibt Haupttitel und Erklärung für den Spielende-Dialog zurück."""
+def ermittle_game_over_info(
+    board: chess.Board, zustand: str, engine_aktiv: bool
+) -> dict:
+    """Liefert strukturierte Informationen, Farben und Texte für den Abschluss-Screen."""
+    gegen_bot = zustand == "bot" or engine_aktiv
+
     if board.is_checkmate():
-        gewinner = "Schwarz" if board.turn == chess.WHITE else "Weiß"
-        return "Schachmatt!", f"{gewinner} gewinnt die Partie"
+        weiss_siegt = board.turn == chess.BLACK
+        ergebnis = "1 - 0" if weiss_siegt else "0 - 1"
+        icon_symbole = ["K"] if weiss_siegt else ["k"]
+
+        if gegen_bot:
+            if weiss_siegt:
+                return {
+                    "titel": "Du hast gewonnen!",
+                    "untertitel": f"Schachmatt gegen den Bot  •  {ergebnis}",
+                    "beschreibung": "Starke Partie! Du hast die Schach-Engine bezwungen.",
+                    "akzent": (224, 178, 68),
+                    "header_bg": (56, 48, 28),
+                    "icon_symbole": icon_symbole,
+                    "ergebnis": ergebnis,
+                }
+            return {
+                "titel": "Du hast verloren!",
+                "untertitel": f"Der Bot setzt dich matt  •  {ergebnis}",
+                "beschreibung": "Knappe Sache – prüfe den letzten Zug oder starte eine Revanche!",
+                "akzent": (225, 75, 75),
+                "header_bg": (58, 28, 32),
+                "icon_symbole": icon_symbole,
+                "ergebnis": ergebnis,
+            }
+
+        sieger = "Weiß" if weiss_siegt else "Schwarz"
+        return {
+            "titel": f"{sieger} gewinnt!",
+            "untertitel": f"Durch Schachmatt  •  {ergebnis}",
+            "beschreibung": f"Glückwunsch an {sieger} zu einer starken Partie!",
+            "akzent": (224, 178, 68),
+            "header_bg": (56, 48, 28),
+            "icon_symbole": icon_symbole,
+            "ergebnis": ergebnis,
+        }
+
     if board.is_stalemate():
-        return "Patt!", "Unentschieden (Remis)"
-    if board.is_insufficient_material():
-        return "Remis!", "Ungenügend Material zum Mattsetzen"
-    if board.is_fifty_moves():
-        return "Remis!", "50-Züge-Regel erreicht"
-    if board.is_repetition(3):
-        return "Remis!", "Dreifache Stellungswiederholung"
-    return "Partie beendet", f"Ergebnis: {board.result()}"
+        grund = "Patt – keine legalen Züge mehr"
+        beschreibung = "Kein König im Schach, aber auch kein Zug mehr möglich."
+    elif board.is_insufficient_material():
+        grund = "Ungenügend Material zum Mattsetzen"
+        beschreibung = "Mit den verbliebenen Figuren ist kein Matt mehr erzwingbar."
+    elif board.is_fifty_moves():
+        grund = "50-Züge-Regel erreicht"
+        beschreibung = "50 Züge ohne Bauernzug oder geschlagene Figur."
+    elif board.is_repetition(3):
+        grund = "Dreifache Stellungswiederholung"
+        beschreibung = "Dieselbe Stellung ist dreimal aufgetreten."
+    else:
+        grund = f"Ergebnis: {board.result()}"
+        beschreibung = "Die Partie wurde regulär beendet."
+
+    return {
+        "titel": "Unentschieden!",
+        "untertitel": f"{grund}  •  ½ - ½",
+        "beschreibung": beschreibung,
+        "akzent": (110, 158, 215),
+        "header_bg": (32, 44, 58),
+        "icon_symbole": ["K", "k"],
+        "ergebnis": "½ - ½",
+    }
+
+
+def _formatiere_dauer(dauer_ms: int) -> str:
+    sekunden = max(0, dauer_ms // 1000)
+    minuten, sek = divmod(sekunden, 60)
+    if minuten >= 60:
+        stunden, minuten = divmod(minuten, 60)
+        return f"{stunden}:{minuten:02d}:{sek:02d}"
+    return f"{minuten:02d}:{sek:02d}"
 
 
 def zeichne_game_over_banner(
     fenster: pygame.Surface,
     board: chess.Board,
+    zustand: str,
+    engine_aktiv: bool,
+    san_liste: list[str],
+    dauer_ms: int,
     maus_pos: tuple[int, int],
     schriften: dict,
+    figuren_surfaces: dict[str, pygame.Surface],
+    mini_figuren: dict[str, pygame.Surface],
 ) -> None:
-    """Zeigt einen modernen Spielende-Dialog zentriert über dem Brett."""
-    titel, untertitel = ermittle_game_over_text(board)
+    """Zeichnet einen ausführlichen Abschluss-Screen mit Ergebnis, Statistiken und Aktionen."""
+    info = ermittle_game_over_info(board, zustand, engine_aktiv)
+    akzent = info["akzent"]
 
-    # Brett leicht abdunkeln
+    # Brett deutlich abdunkeln, damit der Fokus auf der Zusammenfassung liegt
     overlay = pygame.Surface((BRETT_GROESSE, BRETT_GROESSE), pygame.SRCALPHA)
-    overlay.fill((12, 14, 18, 135))
+    overlay.fill((10, 12, 16, 175))
     fenster.blit(overlay, BRETT_RECT.topleft)
 
-    kasten_b, kasten_h = 380, 178
-    rect = pygame.Rect(0, 0, kasten_b, kasten_h)
-    rect.center = (BRETT_MITTE_X, BRETT_MITTE_Y)
+    rect = pygame.Rect(_GO_RECT_X, _GO_RECT_Y, _GO_KASTEN_B, _GO_KASTEN_H)
 
-    # Schlagschatten
-    schatten = pygame.Surface((kasten_b + 16, kasten_h + 16), pygame.SRCALPHA)
-    pygame.draw.rect(schatten, (0, 0, 0, 110), schatten.get_rect(), border_radius=16)
-    fenster.blit(schatten, (rect.x - 8, rect.y - 4))
+    # Weicher Schlagschatten
+    schatten = pygame.Surface((_GO_KASTEN_B + 24, _GO_KASTEN_H + 24), pygame.SRCALPHA)
+    pygame.draw.rect(schatten, (0, 0, 0, 150), schatten.get_rect(), border_radius=20)
+    fenster.blit(schatten, (rect.x - 12, rect.y - 6))
 
-    pygame.draw.rect(fenster, (32, 35, 42), rect, border_radius=14)
-    pygame.draw.rect(fenster, FARBE_AKZENT, rect, width=2, border_radius=14)
+    # Hauptkarte
+    pygame.draw.rect(fenster, (30, 33, 40), rect, border_radius=16)
 
-    titel_surf = schriften["banner"].render(titel, True, FARBE_TEXT_HELL)
-    sub_surf = schriften["klein"].render(untertitel, True, FARBE_TEXT_GEDIMMT)
-    fenster.blit(titel_surf, titel_surf.get_rect(center=(BRETT_MITTE_X, rect.y + 38)))
-    fenster.blit(sub_surf, sub_surf.get_rect(center=(BRETT_MITTE_X, rect.y + 72)))
+    # Farbiger Kopfbereich
+    header_rect = pygame.Rect(rect.x, rect.y, _GO_KASTEN_B, 148)
+    pygame.draw.rect(
+        fenster,
+        info["header_bg"],
+        header_rect,
+        border_top_left_radius=16,
+        border_top_right_radius=16,
+    )
+    pygame.draw.rect(fenster, akzent, rect, width=2, border_radius=16)
 
-    zeichne_klein_button(fenster, BTN_GO_NEU, "Nochmal [R]", maus_pos, schriften, aktiv=True)
-    zeichne_klein_button(fenster, BTN_GO_MENU, "Menü [ESC]", maus_pos, schriften)
+    # Medaillon mit Sieger-König(en)
+    med_mitte = (rect.centerx, rect.y + 48)
+    pygame.draw.circle(fenster, (24, 26, 32), med_mitte, 34)
+    pygame.draw.circle(fenster, akzent, med_mitte, 34, width=2)
+    symbole = info["icon_symbole"]
+    if len(symbole) == 1:
+        icon = pygame.transform.smoothscale(figuren_surfaces[symbole[0]], (50, 50))
+        fenster.blit(icon, icon.get_rect(center=med_mitte))
+    else:
+        icon_w = pygame.transform.smoothscale(figuren_surfaces[symbole[0]], (34, 34))
+        icon_b = pygame.transform.smoothscale(figuren_surfaces[symbole[1]], (34, 34))
+        fenster.blit(icon_w, icon_w.get_rect(center=(med_mitte[0] - 12, med_mitte[1])))
+        fenster.blit(icon_b, icon_b.get_rect(center=(med_mitte[0] + 12, med_mitte[1])))
+
+    # Titel & Untertitel im Header
+    titel_surf = schriften["go_titel"].render(info["titel"], True, FARBE_TEXT_HELL)
+    sub_surf = schriften["info"].render(info["untertitel"], True, akzent)
+    fenster.blit(titel_surf, titel_surf.get_rect(center=(rect.centerx, rect.y + 103)))
+    fenster.blit(sub_surf, sub_surf.get_rect(center=(rect.centerx, rect.y + 132)))
+
+    # Beschreibung / Abschlusstext
+    beschr_surf = schriften["klein"].render(info["beschreibung"], True, FARBE_TEXT_GEDIMMT)
+    fenster.blit(beschr_surf, beschr_surf.get_rect(center=(rect.centerx, rect.y + 168)))
+
+    pygame.draw.line(
+        fenster,
+        FARBE_KARTE_RAND,
+        (rect.x + 24, rect.y + 188),
+        (rect.right - 24, rect.y + 188),
+        1,
+    )
+
+    # Statistik-Karten (2x2 Grid)
+    von_w, von_b, diff = berechne_geschlagene_und_vorteil(board)
+    letzter_zug_txt = san_liste[-1] if san_liste else "–"
+    if diff > 0:
+        material_txt = f"+{diff} Weiß"
+    elif diff < 0:
+        material_txt = f"+{abs(diff)} Schwarz"
+    else:
+        material_txt = "Ausgeglichen"
+
+    vollzuege = len(san_liste) // 2 + (len(san_liste) % 2)
+    zuege_txt = f"{vollzuege} ({len(san_liste)} Halbzüge)"
+
+    stat_w = (_GO_KASTEN_B - 48 - 12) // 2
+    stat_h = 58
+    stats = [
+        ("ZÜGE", zuege_txt, rect.x + 24, rect.y + 202),
+        ("SPIELDAUER", _formatiere_dauer(dauer_ms), rect.x + 24 + stat_w + 12, rect.y + 202),
+        ("LETZTER ZUG", letzter_zug_txt, rect.x + 24, rect.y + 270),
+        ("MATERIALBILANZ", material_txt, rect.x + 24 + stat_w + 12, rect.y + 270),
+    ]
+    for label, wert, sx, sy in stats:
+        s_rect = pygame.Rect(sx, sy, stat_w, stat_h)
+        pygame.draw.rect(fenster, FARBE_KARTE, s_rect, border_radius=10)
+        pygame.draw.rect(fenster, FARBE_KARTE_RAND, s_rect, width=1, border_radius=10)
+        lbl_s = schriften["winzig"].render(label, True, FARBE_TEXT_GEDIMMT)
+        wert_s = schriften["stat_wert"].render(wert, True, FARBE_TEXT_HELL)
+        fenster.blit(lbl_s, (sx + 12, sy + 9))
+        fenster.blit(wert_s, (sx + 12, sy + 28))
+
+    # Geschlagene Figuren Übersicht
+    cap_rect = pygame.Rect(rect.x + 24, rect.y + 340, _GO_KASTEN_B - 48, 58)
+    pygame.draw.rect(fenster, FARBE_KARTE, cap_rect, border_radius=10)
+    pygame.draw.rect(fenster, FARBE_KARTE_RAND, cap_rect, width=1, border_radius=10)
+    cap_titel = schriften["winzig"].render("GESCHLAGENE FIGUREN", True, FARBE_TEXT_GEDIMMT)
+    fenster.blit(cap_titel, (cap_rect.x + 12, cap_rect.y + 8))
+
+    if not von_w and not von_b:
+        keine = schriften["klein"].render("Keine Figuren geschlagen", True, FARBE_TEXT_GEDIMMT)
+        fenster.blit(keine, (cap_rect.x + 12, cap_rect.y + 29))
+    else:
+        def _zeichne_cap_reihe(rx: int, prefix: str, icons: list[str]) -> None:
+            p_lbl = schriften["klein"].render(prefix, True, FARBE_TEXT_GEDIMMT)
+            fenster.blit(p_lbl, (rx, cap_rect.y + 30))
+            ix = rx + p_lbl.get_width() + 6
+            for idx, sym in enumerate(icons[:7]):
+                fenster.blit(mini_figuren[sym], (ix + idx * 17, cap_rect.y + 28))
+            if len(icons) > 7:
+                rest = schriften["winzig"].render(f"+{len(icons) - 7}", True, FARBE_TEXT_GEDIMMT)
+                fenster.blit(rest, (ix + 7 * 17 + 2, cap_rect.y + 32))
+
+        _zeichne_cap_reihe(cap_rect.x + 12, "Weiß:", von_w)
+        _zeichne_cap_reihe(cap_rect.centerx + 4, "Schwarz:", von_b)
+
+    # Aktions-Buttons
+    zeichne_klein_button(fenster, BTN_GO_NEU, "Nochmal spielen [R]", maus_pos, schriften, aktiv=True)
+    zeichne_klein_button(fenster, BTN_GO_MENU, "Hauptmenü [ESC]", maus_pos, schriften)
+    zeichne_klein_button(fenster, BTN_GO_UNDO, "Zug zurück [Z]", maus_pos, schriften)
+    zeichne_klein_button(fenster, BTN_GO_BOARD, "Brett ansehen [H]", maus_pos, schriften)
 
 
 def zeichne_start_button(
@@ -712,6 +885,9 @@ def main() -> None:
     anim_zug: dict | None = None
     san_cache: list[str] = []
     san_cache_len = -1
+    partie_start_zeit = pygame.time.get_ticks()
+    partie_end_zeit: int | None = None
+    game_over_ausgeblendet = False
     uhr = pygame.time.Clock()
     laeuft = True
 
@@ -805,11 +981,28 @@ def main() -> None:
             fenster, board, zustand, engine_aktiv, bot_denkt,
             san_cache, maus_pos, schriften, mini_figuren,
         )
-        if board.is_game_over():
-            zeichne_game_over_banner(fenster, board, maus_pos, schriften)
+        if board.is_game_over() and anim_zug is None:
+            if not game_over_ausgeblendet:
+                end_t = partie_end_zeit if partie_end_zeit is not None else pygame.time.get_ticks()
+                zeichne_game_over_banner(
+                    fenster,
+                    board,
+                    zustand,
+                    engine_aktiv,
+                    san_cache,
+                    end_t - partie_start_zeit,
+                    maus_pos,
+                    schriften,
+                    figuren_surfaces,
+                    mini_figuren,
+                )
+            else:
+                zeichne_klein_button(
+                    fenster, BTN_GO_SHOW, "Ergebnis anzeigen [H]", maus_pos, schriften, aktiv=True
+                )
 
     def mache_undo() -> None:
-        nonlocal ausgewaehlt, anim_zug
+        nonlocal ausgewaehlt, anim_zug, partie_end_zeit, game_over_ausgeblendet
         brich_bot_suche_ab()
         if engine_aktiv:
             if board.turn == chess.WHITE and len(board.move_stack) >= 2:
@@ -821,13 +1014,18 @@ def main() -> None:
             board.pop()
         ausgewaehlt = None
         anim_zug = None
+        partie_end_zeit = None
+        game_over_ausgeblendet = False
 
     def mache_reset() -> None:
-        nonlocal ausgewaehlt, anim_zug
+        nonlocal ausgewaehlt, anim_zug, partie_start_zeit, partie_end_zeit, game_over_ausgeblendet
         brich_bot_suche_ab()
         board.reset()
         ausgewaehlt = None
         anim_zug = None
+        partie_start_zeit = pygame.time.get_ticks()
+        partie_end_zeit = None
+        game_over_ausgeblendet = False
 
     aktualisiere_titel()
 
@@ -883,18 +1081,30 @@ def main() -> None:
                         aktualisiere_titel()
                     elif event.key == pygame.K_z:
                         mache_undo()
+                    elif event.key == pygame.K_h and board.is_game_over():
+                        game_over_ausgeblendet = not game_over_ausgeblendet
 
                 elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                     # 1. Klick auf Game-Over-Buttons
-                    if board.is_game_over():
-                        if BTN_GO_NEU.collidepoint(event.pos):
-                            mache_reset()
-                            continue
-                        if BTN_GO_MENU.collidepoint(event.pos):
-                            brich_bot_suche_ab()
-                            anim_zug = None
-                            zustand = "start"
-                            aktualisiere_titel()
+                    if board.is_game_over() and anim_zug is None:
+                        if not game_over_ausgeblendet:
+                            if BTN_GO_NEU.collidepoint(event.pos):
+                                mache_reset()
+                                continue
+                            if BTN_GO_MENU.collidepoint(event.pos):
+                                brich_bot_suche_ab()
+                                anim_zug = None
+                                zustand = "start"
+                                aktualisiere_titel()
+                                continue
+                            if BTN_GO_UNDO.collidepoint(event.pos):
+                                mache_undo()
+                                continue
+                            if BTN_GO_BOARD.collidepoint(event.pos):
+                                game_over_ausgeblendet = True
+                                continue
+                        elif BTN_GO_SHOW.collidepoint(event.pos):
+                            game_over_ausgeblendet = False
                             continue
 
                     # 2. Klick auf Sidebar-Buttons
@@ -979,6 +1189,9 @@ def main() -> None:
 
         # Stellungsbewertung im Hintergrund aktualisieren & Balken sanft animieren
         if zustand in ("freund", "bot"):
+            if board.is_game_over() and partie_end_zeit is None:
+                partie_end_zeit = pygame.time.get_ticks()
+
             aktueller_key = (len(board.move_stack), board.fen())
             if aktueller_key != eval_letzter_key:
                 starte_eval_suche()
