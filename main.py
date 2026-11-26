@@ -327,6 +327,15 @@ def main():
             titel = f"Schachbrett - {modus}"
         pygame.display.set_caption(titel)
 
+    def fuehre_engine_zug_aus():
+        if engine_aktiv and not board.is_game_over() and board.turn == chess.BLACK:
+            zeichne_brett(fenster, board, ausgewaehlt, schriften, figuren_surfaces)
+            pygame.display.flip()
+            engine_zug = meine_engine_zug(board)
+            if engine_zug and engine_zug in board.legal_moves:
+                pygame.time.delay(120)  # Kleine visuelle Verzögerung für Natürlichkeit
+                board.push(engine_zug)
+
     aktualisiere_titel()
 
     print("=" * 64)
@@ -381,22 +390,24 @@ def main():
                         engine_aktiv = not engine_aktiv
                         aktualisiere_titel()
                         print(f"Engine-Modus geändert: {'Aktiv' if engine_aktiv else 'Deaktiviert'}")
+                        fuehre_engine_zug_aus()
 
                     elif event.key == pygame.K_z:
-                        # Falls der letzte Zug von der Engine kam, 2 Halbzüge zurücknehmen,
-                        # damit Weiß direkt wieder am Zug ist.
-                        if letzter_zug_von_engine and len(board.move_stack) >= 2:
-                            board.pop()
-                            board.pop()
-                            letzter_zug_von_engine = False
+                        # Im Engine-Modus immer so zurücknehmen, dass Weiß wieder am Zug ist.
+                        if engine_aktiv:
+                            if board.turn == chess.WHITE and len(board.move_stack) >= 2:
+                                board.pop()
+                                board.pop()
+                            elif board.turn == chess.BLACK and len(board.move_stack) >= 1:
+                                board.pop()
                         elif len(board.move_stack) >= 1:
                             board.pop()
-                            letzter_zug_von_engine = False
+                        letzter_zug_von_engine = False
                         ausgewaehlt = None
 
                 # Maus-Eingaben
                 elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-                    if not board.is_game_over():
+                    if not board.is_game_over() and not (engine_aktiv and board.turn == chess.BLACK):
                         x, y = event.pos
                         spalte = x // FELD_GROESSE
                         zeile = y // FELD_GROESSE
@@ -419,19 +430,7 @@ def main():
                             if zug in board.legal_moves:
                                 board.push(zug)
                                 ausgewaehlt = None
-                                letzter_zug_von_engine = False
-
-                                # Spielerzug sofort rendern, bevor die Engine rechnet
-                                zeichne_brett(fenster, board, ausgewaehlt, schriften, figuren_surfaces)
-                                pygame.display.flip()
-
-                                # Antwortzug der Engine für Schwarz abrufen
-                                if engine_aktiv and not board.is_game_over() and board.turn == chess.BLACK:
-                                    engine_zug = meine_engine_zug(board)
-                                    if engine_zug and engine_zug in board.legal_moves:
-                                        pygame.time.delay(120)  # Kleine visuelle Verzögerung für Natürlichkeit
-                                        board.push(engine_zug)
-                                        letzter_zug_von_engine = True
+                                fuehre_engine_zug_aus()
                             else:
                                 # Anderes eigenes Feld angeklickt -> Auswahl dorthin wechseln
                                 figur = board.piece_at(geklickt)

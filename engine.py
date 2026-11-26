@@ -672,6 +672,8 @@ class ChessEngine:
                 return book_move
 
         # 2. Iterative Deepening mit Aspiration Windows
+        # Auf einer Kopie suchen, damit SearchTimeout das Originalbrett niemals verändert.
+        search_board = board.copy()
         self.nodes = 0
         self.start_time = time.perf_counter()
         self.stop_time = self.start_time + self.time_limit
@@ -686,11 +688,11 @@ class ChessEngine:
                     alpha = prev_score - 50
                     beta = prev_score + 50
 
-                score, move = self._search_root(board, depth, alpha, beta, best_move)
+                score, move = self._search_root(search_board, depth, alpha, beta, best_move)
 
                 # Bei Aspiration-Fehlschlag mit vollem Fenster neu suchen
                 if score <= alpha or score >= beta:
-                    score, move = self._search_root(board, depth, -INF, INF, best_move)
+                    score, move = self._search_root(search_board, depth, -INF, INF, best_move)
 
                 best_move = move
                 prev_score = score
