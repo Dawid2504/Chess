@@ -19,18 +19,23 @@ import threading
 import chess
 import pygame
 
-from engine import berechne_zug
+from engine import berechne_zug, bewerte_stellung
 from figuren import erstelle_figuren_surfaces
 
 # --- KONFIGURATION & GEOMETRIE ---
 FELD_GROESSE = 80
 BRETT_GROESSE = FELD_GROESSE * 8
 BRETT_RAND = 18
+EVAL_BAR_BREITE = 28
+EVAL_BAR_ABSTAND = 14
 SIDEBAR_BREITE = 264
 
-BREITE = BRETT_RAND * 2 + BRETT_GROESSE + SIDEBAR_BREITE
+BREITE = BRETT_RAND * 2 + BRETT_GROESSE + EVAL_BAR_ABSTAND + EVAL_BAR_BREITE + SIDEBAR_BREITE
 HOEHE = BRETT_RAND * 2 + BRETT_GROESSE
 BRETT_RECT = pygame.Rect(BRETT_RAND, BRETT_RAND, BRETT_GROESSE, BRETT_GROESSE)
+EVAL_BAR_RECT = pygame.Rect(
+    BRETT_RECT.right + EVAL_BAR_ABSTAND, BRETT_RAND, EVAL_BAR_BREITE, BRETT_GROESSE
+)
 BRETT_MITTE_X = BRETT_RECT.centerx
 BRETT_MITTE_Y = BRETT_RECT.centery
 
@@ -58,7 +63,7 @@ BTN_FREUND_RECT = pygame.Rect((BREITE - 390) // 2, 295, 390, 92)
 BTN_BOT_RECT = pygame.Rect((BREITE - 390) // 2, 408, 390, 92)
 
 # Sidebar-Buttons
-_SB_X = BRETT_RECT.right + BRETT_RAND
+_SB_X = EVAL_BAR_RECT.right + BRETT_RAND
 _SB_W = SIDEBAR_BREITE - BRETT_RAND * 2 + 6
 _BTN_W = (_SB_W - 8) // 2
 BTN_SB_UNDO = pygame.Rect(_SB_X, HOEHE - 104, _BTN_W, 38)
@@ -109,6 +114,7 @@ def erstelle_schriften() -> dict[str, pygame.font.Font]:
         "winzig": pygame.font.SysFont(ui_font, 12, bold=True),
         "zuege": pygame.font.SysFont(mono_font, 14),
         "koordinaten": pygame.font.SysFont(ui_font, 11, bold=True),
+        "eval": pygame.font.SysFont(ui_font, 10, bold=True),
     }
 
 
@@ -474,6 +480,88 @@ def zeichne_sidebar(
     zeichne_klein_button(fenster, BTN_SB_MENU, "Menü [ESC]", maus_pos, schriften)
 
 
+def zeichne_eval_bar(
+    fenster: pygame.Surface,
+    anzeige_prob: float,
+    score_white: int,
+    mate_in: int | None,
+    maus_pos: tuple[int, int],
+    schriften: dict,
+) -> None:
+    """Zeichnet den vertikalen Chess.com-ähnlichen Bewertungsbalken rechts neben dem Brett."""
+    rect = EVAL_BAR_RECT
+    prob = max(0.0, min(1.0, anzeige_prob))
+
+    # Schwarzer Hintergrund (oben)
+    pygame.draw.rect(fenster, (38, 40, 46), rect, border_radius=5)
+
+    # Weißer Anteil (unten)
+    weiss_h = int(round(rect.height * prob))
+    if weiss_h > 0:
+        weiss_rect = pygame.Rect(rect.x, rect.bottom - weiss_h, rect.width, weiss_h)
+        top_r = 5 if weiss_h >= rect.height - 2 else 0
+        pygame.draw.rect(
+            fenster,
+            (244, 241, 234),
+            weiss_rect,
+            border_top_left_radius=top_r,
+            border_top_right_radius=top_r,
+            border_bottom_left_radius=5,
+            border_bottom_right_radius=5,
+        )
+
+    # Dezente 50%-Markierung in der Mitte
+    mitte_y = rect.centery
+    pygame.draw.line(
+        fenster,
+        (132, 136, 145),
+        (rect.x + 2, mitte_y),
+        (rect.right - 3, mitte_y),
+        1,
+    )
+
+    # Äußerer Rahmen
+    pygame.draw.rect(fenster, (74, 78, 88), rect, width=1, border_radius=5)
+
+    # Bewertungstext (Pawns oder Matt)
+    if mate_in is not None:
+        eval_txt = "#" if mate_in == 0 else f"M{mate_in}"
+    else:
+        bauern = abs(score_white) / 100.0
+        eval_txt = "0.0" if bauern < 0.05 else f"{bauern:.1f}"
+
+    weiss_vorne = (score_white > 0) if mate_in is not None else (score_white >= 0)
+    if weiss_vorne:
+        txt_farbe = (30, 32, 36) if prob >= 0.08 else (238, 240, 244)
+        txt_pos = (rect.centerx, rect.bottom - 11)
+    else:
+        txt_farbe = (238, 240, 244) if prob <= 0.92 else (30, 32, 36)
+        txt_pos = (rect.centerx, rect.top + 11)
+
+    lbl = schriften["eval"].render(eval_txt, True, txt_farbe)
+    fenster.blit(lbl, lbl.get_rect(center=txt_pos))
+
+    # Hover-Tooltip mit exakter Gewinnwahrscheinlichkeit
+    if rect.collidepoint(maus_pos):
+        w_pct = int(round(prob * 100))
+        b_pct = 100 - w_pct
+        if mate_in is not None:
+            zusatz = "Matt!" if mate_in == 0 else f"Matt in {mate_in}"
+        else:
+            vorz = "+" if score_white >= 0 else "-"
+            zusatz = f"{vorz}{abs(score_white) / 100.0:.2f}"
+        tip_text = f"Weiß {w_pct}% • Schwarz {b_pct}% ({zusatz})"
+        tip_surf = schriften["klein"].render(tip_text, True, FARBE_TEXT_HELL)
+        tip_w = tip_surf.get_width() + 18
+        tip_h = 28
+        tip_x = rect.x - tip_w - 8
+        tip_y = max(BRETT_RAND, min(maus_pos[1] - tip_h // 2, rect.bottom - tip_h))
+        tip_rect = pygame.Rect(tip_x, tip_y, tip_w, tip_h)
+        pygame.draw.rect(fenster, (28, 30, 36), tip_rect, border_radius=6)
+        pygame.draw.rect(fenster, FARBE_AKZENT, tip_rect, width=1, border_radius=6)
+        fenster.blit(tip_surf, tip_surf.get_rect(center=tip_rect.center))
+
+
 def ermittle_game_over_text(board: chess.Board) -> tuple[str, str]:
     """Gibt Haupttitel und Erklärung für den Spielende-Dialog zurück."""
     if board.is_checkmate():
@@ -632,6 +720,15 @@ def main() -> None:
     bot_ergebnisse: queue.SimpleQueue[tuple[int, chess.Move | None]] = queue.SimpleQueue()
     bot_lock = threading.Lock()
 
+    eval_request_id = 0
+    eval_ergebnisse: queue.SimpleQueue[tuple[int, int, int | None, float]] = queue.SimpleQueue()
+    eval_lock = threading.Lock()
+    eval_letzter_key: tuple[int, str] | None = None
+    eval_score_white = 0
+    eval_mate_in: int | None = None
+    eval_ziel_prob = 0.5
+    eval_anzeige_prob = 0.5
+
     def aktualisiere_san_cache() -> None:
         nonlocal san_cache, san_cache_len
         if len(board.move_stack) != san_cache_len:
@@ -678,6 +775,20 @@ def main() -> None:
 
         threading.Thread(target=_worker, daemon=True).start()
 
+    def starte_eval_suche() -> None:
+        nonlocal eval_request_id, eval_letzter_key
+        eval_letzter_key = (len(board.move_stack), board.fen())
+        eval_request_id += 1
+        req_id = eval_request_id
+        board_kopie = board.copy()
+
+        def _eval_worker() -> None:
+            with eval_lock:
+                score_w, mate_in, prob_w = bewerte_stellung(board_kopie)
+            eval_ergebnisse.put((req_id, score_w, mate_in, prob_w))
+
+        threading.Thread(target=_eval_worker, daemon=True).start()
+
     def fuehre_szene_zeichen() -> None:
         aktualisiere_san_cache()
         fenster.fill(FARBE_HINTERGRUND)
@@ -686,6 +797,9 @@ def main() -> None:
         zeichne_brett(
             fenster, board, ausgewaehlt, maus_pos, interaktiv,
             schriften, figuren_surfaces, effekte, anim_zug,
+        )
+        zeichne_eval_bar(
+            fenster, eval_anzeige_prob, eval_score_white, eval_mate_in, maus_pos, schriften
         )
         zeichne_sidebar(
             fenster, board, zustand, engine_aktiv, bot_denkt,
@@ -862,6 +976,26 @@ def main() -> None:
                 and board.turn == chess.BLACK
             ):
                 starte_bot_suche()
+
+        # Stellungsbewertung im Hintergrund aktualisieren & Balken sanft animieren
+        if zustand in ("freund", "bot"):
+            aktueller_key = (len(board.move_stack), board.fen())
+            if aktueller_key != eval_letzter_key:
+                starte_eval_suche()
+
+            while not eval_ergebnisse.empty():
+                req_id, score_w, mate_in, prob_w = eval_ergebnisse.get_nowait()
+                if req_id != eval_request_id:
+                    continue
+                eval_score_white = score_w
+                eval_mate_in = mate_in
+                eval_ziel_prob = prob_w
+
+            diff_prob = eval_ziel_prob - eval_anzeige_prob
+            if abs(diff_prob) < 0.001:
+                eval_anzeige_prob = eval_ziel_prob
+            else:
+                eval_anzeige_prob += diff_prob * 0.18
 
         if zustand == "start":
             zeichne_startseite(fenster, start_hintergrund, schriften, figuren_surfaces, maus_pos)

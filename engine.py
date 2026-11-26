@@ -6,6 +6,7 @@ Tapered Evaluation mit Piece-Square-Tables & Bauernstruktur).
 
 from __future__ import annotations
 
+import math
 import random
 import time
 import chess
@@ -737,11 +738,81 @@ class ChessEngine:
 
         return best_score, best_move
 
+    def evaluate_position(self, board: chess.Board) -> tuple[int, int | None]:
+        """
+        Bewertet die aktuelle Stellung aus weißer Sicht.
+        Rückgabe: (score_white_cp, mate_in_moves_or_None).
+        """
+        if board.is_checkmate():
+            score_white = MATE_SCORE if board.turn == chess.BLACK else -MATE_SCORE
+            return score_white, 0
+        if (
+            board.is_stalemate()
+            or board.is_insufficient_material()
+            or board.is_fifty_moves()
+            or board.is_repetition(3)
+        ):
+            return 0, None
+
+        legal_moves = list(board.legal_moves)
+        if not legal_moves:
+            return 0, None
+
+        search_board = board.copy()
+        self.nodes = 0
+        self.start_time = time.perf_counter()
+        self.stop_time = self.start_time + self.time_limit
+        best_move = legal_moves[0]
+        best_score = self.evaluate(search_board)
+
+        for depth in range(1, self.max_depth + 1):
+            try:
+                alpha = -INF
+                beta = INF
+                if depth >= 4 and abs(best_score) < MATE_THRESHOLD:
+                    alpha = best_score - 50
+                    beta = best_score + 50
+
+                score, move = self._search_root(search_board, depth, alpha, beta, best_move)
+
+                if score <= alpha or score >= beta:
+                    score, move = self._search_root(search_board, depth, -INF, INF, best_move)
+
+                best_move = move
+                best_score = score
+
+                if abs(best_score) >= MATE_THRESHOLD:
+                    break
+            except SearchTimeout:
+                break
+
+        score_white = best_score if board.turn == chess.WHITE else -best_score
+        if abs(score_white) >= MATE_THRESHOLD:
+            mate_plies = max(1, MATE_SCORE - abs(score_white))
+            mate_in = (mate_plies + 1) // 2
+            return score_white, mate_in
+        return score_white, None
+
 
 # Globale Instanz, damit Transposition-Table & History über Züge hinweg erhalten bleiben
 _ENGINE = ChessEngine(time_limit=2.0, max_depth=12)
+_EVAL_ENGINE = ChessEngine(time_limit=0.30, max_depth=5)
 
 
 def berechne_zug(board: chess.Board) -> chess.Move | None:
     """Öffentliche Schnittstelle für main.py."""
     return _ENGINE.find_best_move(board)
+
+
+def bewerte_stellung(board: chess.Board) -> tuple[int, int | None, float]:
+    """
+    Berechnet Stellungsbewertung (Centipawns aus weißer Sicht),
+    optionale Matt-Distanz in Zügen sowie die Sieg-Wahrscheinlichkeit für Weiß (0.0..1.0).
+    """
+    score_white, mate_in = _EVAL_ENGINE.evaluate_position(board)
+    if mate_in is not None:
+        win_prob_white = 1.0 if score_white > 0 else 0.0
+    else:
+        clamped = max(-4000, min(4000, score_white))
+        win_prob_white = 1.0 / (1.0 + math.exp(-0.00368208 * clamped))
+    return score_white, mate_in, win_prob_white
