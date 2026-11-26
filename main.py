@@ -14,6 +14,8 @@ Steuerung:
 import chess
 import pygame
 
+from engine import berechne_zug
+
 # --- KONFIGURATION & FARBEN ---
 BREITE, HOEHE = 640, 640
 FELD_GROESSE = BREITE // 8
@@ -39,10 +41,9 @@ FARBE_KARTE_HOVER = (58, 58, 58)
 FARBE_TEXT_HELL = (240, 240, 240)
 FARBE_TEXT_GEDIMMT = (175, 175, 175)
 
-# Button-Geometrie (Startseite & Platzhalter)
+# Button-Geometrie (Startseite)
 BTN_FREUND_RECT = pygame.Rect((BREITE - 340) // 2, 245, 340, 88)
 BTN_BOT_RECT = pygame.Rect((BREITE - 340) // 2, 355, 340, 88)
-BTN_ZURUECK_RECT = pygame.Rect((BREITE - 260) // 2, 380, 260, 52)
 
 # Solide Unicode-Figuren für konsistente Füllung beider Farben
 FIGUREN_UNICODE = {
@@ -59,18 +60,8 @@ FIGUREN_FALLBACK = {
 
 # --- ENGINE-SCHNITTSTELLE ---
 def meine_engine_zug(board: chess.Board) -> chess.Move | None:
-    """
-    Hier kommt deine eigene Schach-Engine / Bewertungsfunktion rein!
-
-    Rückgabe:
-      - Ein gültiger chess.Move (wenn Schwarz dran ist)
-      - None (falls du beide Seiten manuell spielen möchtest)
-
-    Beispiel für Zufallszüge (zum schnellen Testen):
-        import random
-        return random.choice(list(board.legal_moves))
-    """
-    return None
+    """Ruft die starke Schach-Engine aus engine.py auf."""
+    return berechne_zug(board)
 
 
 # --- RESSOURCEN-VERWALTUNG ---
@@ -303,40 +294,10 @@ def zeichne_startseite(fenster, schriften: dict, maus_pos: tuple[int, int]):
         fenster,
         BTN_BOT_RECT,
         "Gegen Bot spielen",
-        "Platzhalter für später",
+        "Gegen starke Schach-Engine (Schwarz)",
         maus_pos,
         schriften,
-        akzent_farbe=FARBE_FELD_DUNKEL,
-    )
-
-
-def zeichne_bot_platzhalter(fenster, schriften: dict, maus_pos: tuple[int, int]):
-    """Platzhalter-Ansicht für den späteren Bot-Modus."""
-    fenster.fill(FARBE_HINTERGRUND)
-
-    karte = pygame.Rect((BREITE - 460) // 2, 165, 460, 295)
-    pygame.draw.rect(fenster, FARBE_KARTE, karte, border_radius=14)
-    pygame.draw.rect(fenster, FARBE_FELD_DUNKEL, karte, width=2, border_radius=14)
-
-    titel_surf = schriften["banner"].render("Bot-Modus", True, FARBE_FELD_HELL)
-    info1_surf = schriften["info"].render("Noch nicht verfügbar", True, FARBE_TEXT_HELL)
-    info2_surf = schriften["klein"].render(
-        "Dieser Bereich ist eine Lücke für die spätere Bot-Logik.",
-        True,
-        FARBE_TEXT_GEDIMMT,
-    )
-
-    fenster.blit(titel_surf, titel_surf.get_rect(center=(BREITE // 2, 220)))
-    fenster.blit(info1_surf, info1_surf.get_rect(center=(BREITE // 2, 270)))
-    fenster.blit(info2_surf, info2_surf.get_rect(center=(BREITE // 2, 305)))
-
-    zeichne_button(
-        fenster,
-        BTN_ZURUECK_RECT,
-        "Zurück",
-        None,
-        maus_pos,
-        schriften,
+        akzent_farbe=FARBE_AUSWAHL,
     )
 
 
@@ -359,7 +320,8 @@ def main():
         if zustand == "start":
             titel = "Schach - Startseite"
         elif zustand == "bot":
-            titel = "Schach - Bot (Platzhalter)"
+            modus = "Gegen Bot (Schwarz)" if engine_aktiv else "Bot pausiert (Lokal)"
+            titel = f"Schachbrett - {modus}"
         else:
             modus = "Engine aktiv (Schwarz)" if engine_aktiv else "Freund (Lokal)"
             titel = f"Schachbrett - {modus}"
@@ -396,23 +358,14 @@ def main():
                         zustand = "freund"
                         aktualisiere_titel()
                     elif BTN_BOT_RECT.collidepoint(event.pos):
+                        board.reset()
+                        ausgewaehlt = None
+                        letzter_zug_von_engine = False
+                        engine_aktiv = True
                         zustand = "bot"
                         aktualisiere_titel()
 
-            elif zustand == "bot":
-                # Platzhalter für späteren Bot-Modus
-                if (
-                    (event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE)
-                    or (
-                        event.type == pygame.MOUSEBUTTONDOWN
-                        and event.button == 1
-                        and BTN_ZURUECK_RECT.collidepoint(event.pos)
-                    )
-                ):
-                    zustand = "start"
-                    aktualisiere_titel()
-
-            elif zustand == "freund":
+            elif zustand in ("freund", "bot"):
                 # Tastatur-Eingaben
                 if event.type == pygame.KEYDOWN:
                     if event.key == pygame.K_ESCAPE:
@@ -490,8 +443,6 @@ def main():
         # Aktuelle Ansicht zeichnen
         if zustand == "start":
             zeichne_startseite(fenster, schriften, maus_pos)
-        elif zustand == "bot":
-            zeichne_bot_platzhalter(fenster, schriften, maus_pos)
         else:
             zeichne_brett(fenster, board, ausgewaehlt, schriften, figuren_surfaces)
             if board.is_game_over():
