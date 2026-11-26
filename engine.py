@@ -480,6 +480,7 @@ class ChessEngine:
             return 0
 
         in_check = board.is_check()
+        stand_pat = 0
         if not in_check:
             stand_pat = self.evaluate(board)
             if stand_pat >= beta:
