@@ -3,10 +3,12 @@ Schachbrett & Engine-Testumgebung
 Entwickelt mit Pygame und python-chess.
 
 Steuerung:
+  - Startseite:              Spielmodus wählen (Freund oder Bot)
   - Linksklick:              Figur auswählen / Ziel wählen (erneuter Klick auf Auswahl deselektiert)
   - [Z]:                     Zug rückgängig machen (Undo)
   - [R]:                     Partie zurücksetzen (Reset)
   - [E]:                     Engine-Modus für Schwarz ein-/ausschalten
+  - [ESC]:                   Zurück zur Startseite
 """
 
 import chess
@@ -29,6 +31,18 @@ FARBE_WEISS_FIGUR = (250, 250, 250)
 FARBE_WEISS_KONTUR = (35, 35, 35)
 FARBE_SCHWARZ_FIGUR = (30, 30, 30)
 FARBE_SCHWARZ_KONTUR = (195, 195, 195)
+
+# UI-Farben für Startseite und Platzhalter
+FARBE_HINTERGRUND = (28, 28, 28)
+FARBE_KARTE = (42, 42, 42)
+FARBE_KARTE_HOVER = (58, 58, 58)
+FARBE_TEXT_HELL = (240, 240, 240)
+FARBE_TEXT_GEDIMMT = (175, 175, 175)
+
+# Button-Geometrie (Startseite & Platzhalter)
+BTN_FREUND_RECT = pygame.Rect((BREITE - 340) // 2, 245, 340, 88)
+BTN_BOT_RECT = pygame.Rect((BREITE - 340) // 2, 355, 340, 88)
+BTN_ZURUECK_RECT = pygame.Rect((BREITE - 260) // 2, 380, 260, 52)
 
 # Solide Unicode-Figuren für konsistente Füllung beider Farben
 FIGUREN_UNICODE = {
@@ -72,7 +86,9 @@ def erstelle_schriften():
             break
 
     haupt_schrift = pygame.font.SysFont(font_name, int(FELD_GROESSE * 0.76))
+    titel_schrift = pygame.font.SysFont("arial", 42, bold=True)
     info_schrift = pygame.font.SysFont("arial", 19, bold=True)
+    klein_schrift = pygame.font.SysFont("arial", 15)
     banner_schrift = pygame.font.SysFont("arial", 28, bold=True)
     koordinaten_schrift = pygame.font.SysFont("arial", 12, bold=True)
 
@@ -82,7 +98,9 @@ def erstelle_schriften():
 
     return {
         "haupt": haupt_schrift,
+        "titel": titel_schrift,
         "info": info_schrift,
+        "klein": klein_schrift,
         "banner": banner_schrift,
         "koordinaten": koordinaten_schrift,
         "fallback": benutze_fallback,
@@ -244,6 +262,84 @@ def zeichne_game_over_banner(fenster, board: chess.Board, schriften: dict):
     fenster.blit(tipp_surf, tipp_surf.get_rect(center=(BREITE // 2, kasten_y + 102)))
 
 
+def zeichne_button(fenster, rect: pygame.Rect, titel: str, untertitel: str | None,
+                   maus_pos: tuple[int, int], schriften: dict,
+                   akzent_farbe: tuple[int, int, int] = FARBE_AUSWAHL):
+    """Zeichnet einen interaktiven Button mit Hover-Effekt."""
+    ist_hover = rect.collidepoint(maus_pos)
+    hintergrund = FARBE_KARTE_HOVER if ist_hover else FARBE_KARTE
+    rahmen = akzent_farbe if ist_hover else FARBE_FELD_DUNKEL
+
+    pygame.draw.rect(fenster, hintergrund, rect, border_radius=12)
+    pygame.draw.rect(fenster, rahmen, rect, width=2, border_radius=12)
+
+    titel_surf = schriften["banner"].render(titel, True, FARBE_TEXT_HELL)
+    if untertitel:
+        sub_surf = schriften["klein"].render(untertitel, True, FARBE_TEXT_GEDIMMT)
+        fenster.blit(titel_surf, titel_surf.get_rect(center=(rect.centerx, rect.centery - 13)))
+        fenster.blit(sub_surf, sub_surf.get_rect(center=(rect.centerx, rect.centery + 18)))
+    else:
+        fenster.blit(titel_surf, titel_surf.get_rect(center=rect.center))
+
+
+def zeichne_startseite(fenster, schriften: dict, maus_pos: tuple[int, int]):
+    """Zeichnet die Startseite zur Auswahl des Spielmodus (ohne Schachbrett)."""
+    fenster.fill(FARBE_HINTERGRUND)
+
+    titel_surf = schriften["titel"].render("Schach", True, FARBE_FELD_HELL)
+    sub_surf = schriften["info"].render("Wähle deinen Spielmodus", True, FARBE_TEXT_GEDIMMT)
+    fenster.blit(titel_surf, titel_surf.get_rect(center=(BREITE // 2, 130)))
+    fenster.blit(sub_surf, sub_surf.get_rect(center=(BREITE // 2, 182)))
+
+    zeichne_button(
+        fenster,
+        BTN_FREUND_RECT,
+        "Mit Freund spielen",
+        "Auf einem Gerät gegeneinander",
+        maus_pos,
+        schriften,
+    )
+    zeichne_button(
+        fenster,
+        BTN_BOT_RECT,
+        "Gegen Bot spielen",
+        "Platzhalter für später",
+        maus_pos,
+        schriften,
+        akzent_farbe=FARBE_FELD_DUNKEL,
+    )
+
+
+def zeichne_bot_platzhalter(fenster, schriften: dict, maus_pos: tuple[int, int]):
+    """Platzhalter-Ansicht für den späteren Bot-Modus."""
+    fenster.fill(FARBE_HINTERGRUND)
+
+    karte = pygame.Rect((BREITE - 460) // 2, 165, 460, 295)
+    pygame.draw.rect(fenster, FARBE_KARTE, karte, border_radius=14)
+    pygame.draw.rect(fenster, FARBE_FELD_DUNKEL, karte, width=2, border_radius=14)
+
+    titel_surf = schriften["banner"].render("Bot-Modus", True, FARBE_FELD_HELL)
+    info1_surf = schriften["info"].render("Noch nicht verfügbar", True, FARBE_TEXT_HELL)
+    info2_surf = schriften["klein"].render(
+        "Dieser Bereich ist eine Lücke für die spätere Bot-Logik.",
+        True,
+        FARBE_TEXT_GEDIMMT,
+    )
+
+    fenster.blit(titel_surf, titel_surf.get_rect(center=(BREITE // 2, 220)))
+    fenster.blit(info1_surf, info1_surf.get_rect(center=(BREITE // 2, 270)))
+    fenster.blit(info2_surf, info2_surf.get_rect(center=(BREITE // 2, 305)))
+
+    zeichne_button(
+        fenster,
+        BTN_ZURUECK_RECT,
+        "Zurück",
+        None,
+        maus_pos,
+        schriften,
+    )
+
+
 # --- HAUPTSCHLEIFE ---
 def main():
     pygame.init()
@@ -253,108 +349,153 @@ def main():
 
     board = chess.Board()
     ausgewaehlt: int | None = None
-    engine_aktiv = True   # Zieht automatisch, sobald meine_engine_zug Züge liefert
+    zustand = "start"  # "start", "freund", "bot"
+    engine_aktiv = False
     letzter_zug_von_engine = False
     uhr = pygame.time.Clock()
     laeuft = True
 
     def aktualisiere_titel():
-        modus = "Engine aktiv (Schwarz)" if engine_aktiv else "Manuell (beide Seiten)"
-        pygame.display.set_caption(f"Schachbrett - {modus}")
+        if zustand == "start":
+            titel = "Schach - Startseite"
+        elif zustand == "bot":
+            titel = "Schach - Bot (Platzhalter)"
+        else:
+            modus = "Engine aktiv (Schwarz)" if engine_aktiv else "Freund (Lokal)"
+            titel = f"Schachbrett - {modus}"
+        pygame.display.set_caption(titel)
 
     aktualisiere_titel()
 
     print("=" * 64)
     print("Schachbrett erfolgreich gestartet!")
     print("Steuerung:")
+    print("  - Startseite:  Freund oder Bot auswählen")
     print("  - Linksklick:  Figur auswählen & ziehen (erneuter Klick deselektiert)")
     print("  - [Z]:         Zug rückgängig machen (Undo)")
     print("  - [R]:         Brett zurücksetzen (Reset)")
     print("  - [E]:         Engine für Schwarz umschalten (An/Aus)")
+    print("  - [ESC]:       Zurück zur Startseite")
     print("=" * 64)
 
     while laeuft:
         uhr.tick(60)
+        maus_pos = pygame.mouse.get_pos()
 
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 laeuft = False
 
-            # Tastatur-Eingaben
-            elif event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_r:
-                    board.reset()
-                    ausgewaehlt = None
-                    letzter_zug_von_engine = False
-
-                elif event.key == pygame.K_e:
-                    engine_aktiv = not engine_aktiv
-                    aktualisiere_titel()
-                    print(f"Engine-Modus geändert: {'Aktiv' if engine_aktiv else 'Deaktiviert'}")
-
-                elif event.key == pygame.K_z:
-                    # Falls der letzte Zug von der Engine kam, 2 Halbzüge zurücknehmen,
-                    # damit Weiß direkt wieder am Zug ist.
-                    if letzter_zug_von_engine and len(board.move_stack) >= 2:
-                        board.pop()
-                        board.pop()
-                        letzter_zug_von_engine = False
-                    elif len(board.move_stack) >= 1:
-                        board.pop()
-                        letzter_zug_von_engine = False
-                    ausgewaehlt = None
-
-            # Maus-Eingaben
-            elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-                if not board.is_game_over():
-                    x, y = event.pos
-                    spalte = x // FELD_GROESSE
-                    zeile = y // FELD_GROESSE
-                    geklickt = chess.square(spalte, 7 - zeile)
-
-                    if ausgewaehlt is None:
-                        figur = board.piece_at(geklickt)
-                        # Nur Figuren der aktuellen Spielerfarbe anwählen
-                        if figur and figur.color == board.turn:
-                            ausgewaehlt = geklickt
-                    elif geklickt == ausgewaehlt:
-                        # Klick auf die bereits gewählte Figur hebt Auswahl auf
+            elif zustand == "start":
+                if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                    if BTN_FREUND_RECT.collidepoint(event.pos):
+                        board.reset()
                         ausgewaehlt = None
-                    else:
-                        # Zug zusammensetzen & Bauernumwandlung zur Dame berücksichtigen
-                        zug = chess.Move(ausgewaehlt, geklickt)
-                        if chess.Move(ausgewaehlt, geklickt, promotion=chess.QUEEN) in board.legal_moves:
-                            zug = chess.Move(ausgewaehlt, geklickt, promotion=chess.QUEEN)
+                        letzter_zug_von_engine = False
+                        engine_aktiv = False
+                        zustand = "freund"
+                        aktualisiere_titel()
+                    elif BTN_BOT_RECT.collidepoint(event.pos):
+                        zustand = "bot"
+                        aktualisiere_titel()
 
-                        if zug in board.legal_moves:
-                            board.push(zug)
-                            ausgewaehlt = None
+            elif zustand == "bot":
+                # Platzhalter für späteren Bot-Modus
+                if (
+                    (event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE)
+                    or (
+                        event.type == pygame.MOUSEBUTTONDOWN
+                        and event.button == 1
+                        and BTN_ZURUECK_RECT.collidepoint(event.pos)
+                    )
+                ):
+                    zustand = "start"
+                    aktualisiere_titel()
+
+            elif zustand == "freund":
+                # Tastatur-Eingaben
+                if event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_ESCAPE:
+                        zustand = "start"
+                        aktualisiere_titel()
+
+                    elif event.key == pygame.K_r:
+                        board.reset()
+                        ausgewaehlt = None
+                        letzter_zug_von_engine = False
+
+                    elif event.key == pygame.K_e:
+                        engine_aktiv = not engine_aktiv
+                        aktualisiere_titel()
+                        print(f"Engine-Modus geändert: {'Aktiv' if engine_aktiv else 'Deaktiviert'}")
+
+                    elif event.key == pygame.K_z:
+                        # Falls der letzte Zug von der Engine kam, 2 Halbzüge zurücknehmen,
+                        # damit Weiß direkt wieder am Zug ist.
+                        if letzter_zug_von_engine and len(board.move_stack) >= 2:
+                            board.pop()
+                            board.pop()
                             letzter_zug_von_engine = False
+                        elif len(board.move_stack) >= 1:
+                            board.pop()
+                            letzter_zug_von_engine = False
+                        ausgewaehlt = None
 
-                            # Spielerzug sofort rendern, bevor die Engine rechnet
-                            zeichne_brett(fenster, board, ausgewaehlt, schriften, figuren_surfaces)
-                            pygame.display.flip()
+                # Maus-Eingaben
+                elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                    if not board.is_game_over():
+                        x, y = event.pos
+                        spalte = x // FELD_GROESSE
+                        zeile = y // FELD_GROESSE
+                        geklickt = chess.square(spalte, 7 - zeile)
 
-                            # Antwortzug der Engine für Schwarz abrufen
-                            if engine_aktiv and not board.is_game_over() and board.turn == chess.BLACK:
-                                engine_zug = meine_engine_zug(board)
-                                if engine_zug and engine_zug in board.legal_moves:
-                                    pygame.time.delay(120)  # Kleine visuelle Verzögerung für Natürlichkeit
-                                    board.push(engine_zug)
-                                    letzter_zug_von_engine = True
-                        else:
-                            # Anderes eigenes Feld angeklickt -> Auswahl dorthin wechseln
+                        if ausgewaehlt is None:
                             figur = board.piece_at(geklickt)
+                            # Nur Figuren der aktuellen Spielerfarbe anwählen
                             if figur and figur.color == board.turn:
                                 ausgewaehlt = geklickt
-                            else:
+                        elif geklickt == ausgewaehlt:
+                            # Klick auf die bereits gewählte Figur hebt Auswahl auf
+                            ausgewaehlt = None
+                        else:
+                            # Zug zusammensetzen & Bauernumwandlung zur Dame berücksichtigen
+                            zug = chess.Move(ausgewaehlt, geklickt)
+                            if chess.Move(ausgewaehlt, geklickt, promotion=chess.QUEEN) in board.legal_moves:
+                                zug = chess.Move(ausgewaehlt, geklickt, promotion=chess.QUEEN)
+
+                            if zug in board.legal_moves:
+                                board.push(zug)
                                 ausgewaehlt = None
+                                letzter_zug_von_engine = False
 
-        # Brett und eventuelles Game-Over-Banner zeichnen
-        zeichne_brett(fenster, board, ausgewaehlt, schriften, figuren_surfaces)
+                                # Spielerzug sofort rendern, bevor die Engine rechnet
+                                zeichne_brett(fenster, board, ausgewaehlt, schriften, figuren_surfaces)
+                                pygame.display.flip()
 
-        if board.is_game_over():
-            zeichne_game_over_banner(fenster, board, schriften)
+                                # Antwortzug der Engine für Schwarz abrufen
+                                if engine_aktiv and not board.is_game_over() and board.turn == chess.BLACK:
+                                    engine_zug = meine_engine_zug(board)
+                                    if engine_zug and engine_zug in board.legal_moves:
+                                        pygame.time.delay(120)  # Kleine visuelle Verzögerung für Natürlichkeit
+                                        board.push(engine_zug)
+                                        letzter_zug_von_engine = True
+                            else:
+                                # Anderes eigenes Feld angeklickt -> Auswahl dorthin wechseln
+                                figur = board.piece_at(geklickt)
+                                if figur and figur.color == board.turn:
+                                    ausgewaehlt = geklickt
+                                else:
+                                    ausgewaehlt = None
+
+        # Aktuelle Ansicht zeichnen
+        if zustand == "start":
+            zeichne_startseite(fenster, schriften, maus_pos)
+        elif zustand == "bot":
+            zeichne_bot_platzhalter(fenster, schriften, maus_pos)
+        else:
+            zeichne_brett(fenster, board, ausgewaehlt, schriften, figuren_surfaces)
+            if board.is_game_over():
+                zeichne_game_over_banner(fenster, board, schriften)
 
         pygame.display.flip()
 
