@@ -39,5 +39,5 @@ Falls du das Spiel direkt über Python starten oder auf macOS/Linux nutzen möch
 
 1. **Repository klonen:**
    ```bash
-   git clone [https://github.com/DEIN-USERNAME/Chess.git](https://github.com/DEIN-USERNAME/Chess.git)
+   git clone [https://github.com/Dawid2504/Chess.git](https://github.com/Dawid2504/Chess.git)
    cd Chess
