@@ -1,0 +1,56 @@
+# Constants and configuration for the Chess project
+import pygame
+import chess
+
+# Geometry
+FELD_GROESSE = 80
+BRETT_GROESSE = FELD_GROESSE * 8
+BRETT_RAND = 18
+EVAL_BAR_BREITE = 28
+EVAL_BAR_ABSTAND = 14
+SIDEBAR_BREITE = 264
+
+# Derived sizes
+BREITE = BRETT_RAND * 2 + BRETT_GROESSE + EVAL_BAR_ABSTAND + EVAL_BAR_BREITE + SIDEBAR_BREITE
+HOEHE = BRETT_RAND * 2 + BRETT_GROESSE
+
+# Rectangles (initialized after pygame import)
+BRETT_RECT = pygame.Rect(BRETT_RAND, BRETT_RAND, BRETT_GROESSE, BRETT_GROESSE)
+EVAL_BAR_RECT = pygame.Rect(
+    BRETT_RECT.right + EVAL_BAR_ABSTAND, BRETT_RAND, EVAL_BAR_BREITE, BRETT_GROESSE
+)
+
+# Colors (RGB tuples)
+FARBE_HINTERGRUND = (24, 26, 30)
+FARBE_RAHMEN = (52, 42, 36)
+FARBE_RAHMEN_HELL = (76, 63, 54)
+FARBE_RAHMEN_DUNKEL = (30, 24, 20)
+FARBE_FELD_HELL = (238, 219, 184)
+FARBE_FELD_DUNKEL = (176, 132, 95)
+FARBE_KARTE = (34, 37, 44)
+FARBE_KARTE_HOVER = (48, 52, 62)
+FARBE_KARTE_RAND = (58, 63, 74)
+FARBE_AKZENT = (146, 184, 72)
+FARBE_AKZENT_HELL = (176, 214, 96)
+FARBE_WARNUNG = (225, 75, 75)
+FARBE_TEXT_HELL = (242, 244, 248)
+FARBE_TEXT_GEDIMMT = (158, 165, 178)
+# Center coordinates
+BRETT_MITTE_X = BRETT_RECT.centerx
+BRETT_MITTE_Y = BRETT_RECT.centery
+
+# Piece values and starting counts
+START_ANZAHL = {
+    chess.PAWN: 8,
+    chess.KNIGHT: 2,
+    chess.BISHOP: 2,
+    chess.ROOK: 2,
+    chess.QUEEN: 1,
+}
+FIGUR_WERTE = {
+    chess.PAWN: 1,
+    chess.KNIGHT: 3,
+    chess.BISHOP: 3,
+    chess.ROOK: 5,
+    chess.QUEEN: 9,
+}
